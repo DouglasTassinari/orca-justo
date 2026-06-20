@@ -37,7 +37,7 @@
   <!-- O JSX abaixo NÃO é executado direto pelo navegador: é transformado pelo
        bootstrap no final do body, usando o runtime clássico (React.createElement). -->
   <script type="text/plain" id="app-src">
-    const { useState, useMemo, useEffect } = React;
+    const { useState, useMemo } = React;
 
     /* Multiplicadores de complexidade aplicados ao rendimento que o usuário informa.
        Baixa rende mais (menos dias) · Média sem ajuste · Alta rende menos (mais dias). */
@@ -103,6 +103,7 @@
     /* ===================== APP ===================== */
     const ESTADO_INICIAL = {
       prof: {
+        nome: "", contato: "",
         ganhoDia: "", diasSemana: "", possuiAjudante: false,
         custoAjudanteDia: "", deslocamentoDia: "", margem: "",
       },
@@ -122,29 +123,8 @@
       const [contratoOriginal, setContratoOriginal] = useState(ESTADO_INICIAL.contratoOriginal);
       const [simuladorPreco, setSimuladorPreco] = useState(ESTADO_INICIAL.simuladorPreco);
       const [mostrarAditivos, setMostrarAditivos] = useState(false);
-      const [carregado, setCarregado] = useState(false);
 
-      /* Persistência local (sem banco de dados) */
-      useEffect(() => {
-        try {
-          const s = localStorage.getItem("orcajusto_v2");
-          if (s) {
-            const d = JSON.parse(s);
-            if (d.prof) setProf(d.prof);
-            if (d.servicos) setServicos(d.servicos);
-            if (d.aditivos) setAditivos(d.aditivos);
-            if (d.contratoOriginal != null) setContratoOriginal(d.contratoOriginal);
-            if (d.mostrarAditivos != null) setMostrarAditivos(d.mostrarAditivos);
-          }
-        } catch (e) {}
-        setCarregado(true);
-      }, []);
-      useEffect(() => {
-        if (!carregado) return;
-        try {
-          localStorage.setItem("orcajusto_v2", JSON.stringify({ prof, servicos, aditivos, contratoOriginal, mostrarAditivos }));
-        } catch (e) {}
-      }, [prof, servicos, aditivos, contratoOriginal, mostrarAditivos, carregado]);
+      // Sem persistência: nada é salvo. A cada F5/recarregar, os campos voltam em branco.
 
       const setP = (k, v) => setProf((p) => ({ ...p, [k]: v }));
 
@@ -179,11 +159,15 @@
         const precoRecomendado = baseCusto + reservaRisco;
         const precoPremium = precoRecomendado * 1.15;
 
-        // Orçamento do cliente: deslocamento e ajudante viram linhas próprias.
-        // O "bolo dos serviços" = mão de obra + margem (margem embutida, nunca exibida ao cliente).
-        // Esse bolo é diluído entre os serviços na proporção dos dias, e o preço por unidade
-        // (m²/m/un) sai dividindo pela quantidade — ou seja, seu valor/dia diluído na quantidade.
-        const poolServicos = maoDeObra + reservaRisco;
+        // Preço que o prestador decide cobrar: se preencheu o simulador "E se eu cobrar
+        // outro valor?", vale esse; senão, o recomendado. É ESSE valor que vai pro cliente.
+        const simNum = toNum(simuladorPreco);
+        const precoEscolhido = (simuladorPreco !== "" && simNum > 0) ? simNum : precoRecomendado;
+
+        // Orçamento do cliente: deslocamento e ajudante viram linhas próprias; o restante
+        // ("bolo dos serviços", com a margem embutida e nunca exibida) é diluído entre os
+        // serviços na proporção dos dias, e o preço por unidade sai dividindo pela quantidade.
+        const poolServicos = precoEscolhido - deslocamento - ajudante;
         const itensOrcados = itens.map((it) => {
           const precoServico = diasBrutos > 0 ? poolServicos * (it.dias / diasBrutos) : 0;
           const qtd = toNum(it.quantidade);
@@ -200,10 +184,10 @@
         return {
           itens: itensOrcados, poolServicos, diasBrutos, totalDias, semanas,
           maoDeObra, deslocamento, ajudante, custosOperacionais, baseCusto, reservaRisco,
-          precoMinimo, precoRecomendado, precoPremium,
+          precoMinimo, precoRecomendado, precoPremium, precoEscolhido,
           ganhoDia, margem, ganhoRealPorDia,
         };
-      }, [servicos, prof]);
+      }, [servicos, prof, simuladorPreco]);
 
       /* ---------- Aditivos ---------- */
       const custoDiaMarginal = useMemo(() =>
@@ -222,22 +206,21 @@
       const upAditivo = (id, patch) =>
         setAditivos((a) => a.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
-      const contratoBase = contratoOriginal === "" ? calc.precoRecomendado : toNum(contratoOriginal);
+      const contratoBase = contratoOriginal === "" ? calc.precoEscolhido : toNum(contratoOriginal);
       const totAdicionais = aditivos.filter((a) => a.tipo === "adicional").reduce((s, a) => s + valorAditivo(a), 0);
       const totNaoExec = aditivos.filter((a) => a.tipo === "naoExecutado").reduce((s, a) => s + valorAditivo(a), 0);
       const valorAtualizado = contratoBase + totAdicionais - totNaoExec;
 
-      /* Simulador reverso */
-      const precoSimulado = simuladorPreco === "" ? calc.precoRecomendado : toNum(simuladorPreco);
+      /* Simulador reverso (o preço escolhido aqui é o que vai pro orçamento do cliente) */
+      const precoSimulado = calc.precoEscolhido;
       const ganhoSimulado = calc.ganhoRealPorDia(precoSimulado);
       const ganhoRecomendado = calc.ganhoRealPorDia(calc.precoRecomendado);
 
       const resetTudo = () => {
         if (confirm("Limpar tudo e recomeçar?")) {
-          localStorage.removeItem("orcajusto_v2");
           setProf(ESTADO_INICIAL.prof);
           setServicos(ESTADO_INICIAL.servicos.map((s) => ({ ...s, id: uid() })));
-          setAditivos([]); setContratoOriginal(""); setSimuladorPreco("");
+          setAditivos([]); setContratoOriginal(""); setSimuladorPreco(""); setMostrarAditivos(false);
         }
       };
 
@@ -262,6 +245,18 @@
           <section className="no-print bg-white rounded-2xl shadow-sm p-5 mb-4">
             <h2 className="text-sm font-bold text-indigo-600 uppercase tracking-wide mb-3">1 · Seus dados</h2>
             <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Campo label="Seu nome (aparece no orçamento)">
+                  <input value={prof.nome} onChange={(e) => setP("nome", e.target.value)}
+                    placeholder="Ex.: João da Silva" className={inputCls} />
+                </Campo>
+              </div>
+              <div className="col-span-2">
+                <Campo label="Contato (aparece no orçamento)">
+                  <input value={prof.contato} onChange={(e) => setP("contato", e.target.value)}
+                    placeholder="Telefone / WhatsApp" className={inputCls} />
+                </Campo>
+              </div>
               <Campo label="Quanto quer ganhar por dia?">
                 <NumInput value={prof.ganhoDia} onChange={(v) => setP("ganhoDia", v)} prefix="R$" />
               </Campo>
@@ -427,7 +422,7 @@
           {/* ---------- SIMULADOR REVERSO ---------- */}
           <section className="no-print bg-white rounded-2xl shadow-sm p-5 mb-4">
             <h2 className="text-sm font-bold text-amber-600 uppercase tracking-wide mb-3">E se eu cobrar outro valor?</h2>
-            <Campo label="Simular um preço de obra">
+            <Campo label="Simular um preço de obra" hint="se preencher, é este valor que vai pro orçamento do cliente">
               <NumInput value={simuladorPreco} placeholder={String(Math.round(calc.precoRecomendado))}
                 onChange={setSimuladorPreco} prefix="R$" />
             </Campo>
@@ -445,40 +440,75 @@
           </section>
 
           {/* ---------- ORÇAMENTO DO CLIENTE (é o que vai impresso) ---------- */}
-          <section className="bg-white rounded-2xl shadow-sm p-5 mb-4 print-area">
-            <div className="flex items-baseline justify-between mb-1">
-              <h2 className="text-base font-bold text-slate-800">Orçamento</h2>
-              <span className="text-xs text-slate-400">{hoje}</span>
-            </div>
-            <p className="no-print text-xs text-slate-400 mb-3">
-              Prévia do que o cliente recebe — sem margem e sem seus ganhos. É esta parte que sai na impressão.
-            </p>
-
-            <div className="rounded-xl border border-slate-100 overflow-hidden">
-              {calc.itens.filter((it) => toNum(it.quantidade) > 0).map((it) => (
-                <div key={it.id} className="flex items-baseline justify-between gap-3 px-3 py-2 border-b border-slate-100 last:border-0">
-                  <div className="min-w-0">
-                    <div className="font-medium text-slate-700">{it.nome || "Serviço"}</div>
-                    <div className="text-xs text-slate-400">
-                      {dec(toNum(it.quantidade), 2)} {it.unidade} × {brl(it.precoUnit)}/{it.unidade}
-                    </div>
-                  </div>
-                  <div className="tabular-nums font-semibold text-slate-700 shrink-0">{brl(it.precoServico)}</div>
-                </div>
-              ))}
-              {calc.itens.filter((it) => toNum(it.quantidade) > 0).length === 0 && (
-                <div className="px-3 py-3 text-sm text-slate-400 text-center">
-                  Adicione serviços com quantidade e rendimento para montar o orçamento.
-                </div>
-              )}
+          <section className="relative overflow-hidden bg-white rounded-2xl shadow-sm p-5 mb-4 print-area">
+            {/* Marca d'água grande */}
+            <div className="pointer-events-none select-none absolute inset-0 flex items-center justify-center">
+              <span className="font-black uppercase whitespace-nowrap"
+                style={{ fontSize: "6rem", lineHeight: 1, color: "rgba(79,70,229,0.07)", transform: "rotate(-30deg)" }}>
+                Orça Justo
+              </span>
             </div>
 
-            <div className="mt-2">
-              {calc.deslocamento > 0 && <LinhaResumo titulo="Deslocamento" valor={brl(calc.deslocamento)} />}
-              {prof.possuiAjudante && calc.ajudante > 0 && <LinhaResumo titulo="Ajudante" valor={brl(calc.ajudante)} />}
-              <div className="border-t-2 border-slate-200 mt-1 pt-1">
-                <LinhaResumo titulo="Total do orçamento" valor={brl(calc.precoRecomendado)} destaque />
+            <div className="relative">
+              {/* Cabeçalho: prestador + título + data */}
+              <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3 mb-3">
+                <div className="min-w-0">
+                  <div className="text-lg font-bold text-slate-800">{prof.nome || "Prestador de serviço"}</div>
+                  {prof.contato
+                    ? <div className="text-sm text-slate-500">{prof.contato}</div>
+                    : <div className="no-print text-xs text-amber-600">Preencha seu nome e contato nos seus dados acima.</div>}
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-sm font-bold uppercase tracking-wide text-slate-500">Orçamento</div>
+                  <div className="text-xs text-slate-400">{hoje}</div>
+                </div>
               </div>
+
+              <p className="no-print text-xs text-slate-400 mb-3">
+                Prévia do que o cliente recebe — sem margem e sem seus ganhos. É esta parte que sai na impressão.
+              </p>
+
+              {/* Descrição dos serviços */}
+              <div className="rounded-xl border border-slate-100 overflow-hidden">
+                {calc.itens.filter((it) => toNum(it.quantidade) > 0).map((it) => (
+                  <div key={it.id} className="flex items-baseline justify-between gap-3 px-3 py-2 border-b border-slate-100 last:border-0">
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-700">{it.nome || "Serviço"}</div>
+                      <div className="text-xs text-slate-400">
+                        {dec(toNum(it.quantidade), 2)} {it.unidade} × {brl(it.precoUnit)}/{it.unidade}
+                      </div>
+                    </div>
+                    <div className="tabular-nums font-semibold text-slate-700 shrink-0">{brl(it.precoServico)}</div>
+                  </div>
+                ))}
+                {calc.itens.filter((it) => toNum(it.quantidade) > 0).length === 0 && (
+                  <div className="px-3 py-3 text-sm text-slate-400 text-center">
+                    Adicione serviços com quantidade e rendimento para montar o orçamento.
+                  </div>
+                )}
+              </div>
+
+              {/* Somas e totais */}
+              <div className="mt-2">
+                <LinhaResumo titulo="Subtotal dos serviços" valor={brl(calc.poolServicos)} />
+                {calc.deslocamento > 0 && <LinhaResumo titulo="Deslocamento" valor={brl(calc.deslocamento)} />}
+                {prof.possuiAjudante && calc.ajudante > 0 && <LinhaResumo titulo="Ajudante" valor={brl(calc.ajudante)} />}
+                <div className="border-t-2 border-slate-300 mt-1 pt-1">
+                  <LinhaResumo titulo="Total do orçamento" valor={brl(calc.precoEscolhido)} destaque />
+                </div>
+              </div>
+
+              {/* Assinatura do prestador */}
+              <div className="mt-12 mb-1 flex flex-col items-center">
+                <div className="border-t border-slate-400 w-64 max-w-full"></div>
+                <div className="text-sm font-medium text-slate-600 mt-1">{prof.nome || "Assinatura do prestador"}</div>
+                {prof.contato && <div className="text-xs text-slate-400">{prof.contato}</div>}
+              </div>
+
+              {/* Assinatura do site */}
+              <p className="text-center text-[11px] text-slate-400 mt-4">
+                Orçamento gerado com <span className="font-semibold text-indigo-500">Orça Justo</span> · douglastassinari.github.io/orca-justo
+              </p>
             </div>
           </section>
 
