@@ -39,29 +39,8 @@
   <script type="text/plain" id="app-src">
     const { useState, useMemo, useEffect } = React;
 
-    /* =========================================================
-       CONFIG DE PRODUTIVIDADE
-       Espelha produtividade.json. Quando o app é servido por um
-       servidor (Netlify/Vercel/etc.) ele tenta carregar o JSON;
-       ao abrir localmente (file://) usa esta cópia embutida.
-       ========================================================= */
-    const PRODUTIVIDADE_PADRAO = {
-      "Pintura interna": { unidade: "m²", rendimentoPorDia: 40 },
-      "Pintura externa": { unidade: "m²", rendimentoPorDia: 30 },
-      "Grafiato": { unidade: "m²", rendimentoPorDia: 15 },
-      "Reboco": { unidade: "m²", rendimentoPorDia: 20 },
-      "Recuperação estrutural de paredes": { unidade: "m²", rendimentoPorDia: 8 },
-      "Reparos estruturais": { unidade: "serviço", rendimentoPorDia: 1 },
-      "Rodapé": { unidade: "m", rendimentoPorDia: 20 },
-      "Forro PVC": { unidade: "m²", rendimentoPorDia: 12 },
-      "Recuperação de churrasqueira": { unidade: "unidade", rendimentoPorDia: 0.34 },
-      "Adequação de janelas": { unidade: "unidade", rendimentoPorDia: 0.5 },
-      "Assentamento de piso/cerâmica": { unidade: "m²", rendimentoPorDia: 12 },
-      "Assentamento de azulejo": { unidade: "m²", rendimentoPorDia: 10 },
-      "Contrapiso": { unidade: "m²", rendimentoPorDia: 25 },
-      "Impermeabilização": { unidade: "m²", rendimentoPorDia: 18 },
-      "Massa corrida": { unidade: "m²", rendimentoPorDia: 35 },
-    };
+    /* Multiplicadores de complexidade aplicados ao rendimento que o usuário informa.
+       Baixa rende mais (menos dias) · Média sem ajuste · Alta rende menos (mais dias). */
     const FATOR_COMPLEXIDADE = { "Baixa": 1.15, "Média": 1.0, "Alta": 0.8 };
     const UNIDADES = ["m²", "m", "unidade", "serviço"];
     const COMPLEXIDADES = ["Baixa", "Média", "Alta"];
@@ -72,12 +51,10 @@
     const toNum = (v) => { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : 0; };
     const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-    /* Calcula dias úteis de um item (serviço ou aditivo) a partir do rendimento e complexidade */
-    function diasDoItem(item, tabela) {
-      const cfg = tabela[item.nome];
-      const rend = item.rendimento !== "" && item.rendimento != null
-        ? toNum(item.rendimento)
-        : (cfg ? cfg.rendimentoPorDia : 0);
+    /* Calcula dias úteis de um item (serviço ou aditivo) com base no rendimento
+       informado pelo usuário e no fator de complexidade. */
+    function diasDoItem(item) {
+      const rend = toNum(item.rendimento);
       const fator = FATOR_COMPLEXIDADE[item.complexidade] || 1;
       const rendEfetivo = rend * fator;
       const qtd = toNum(item.quantidade);
@@ -127,7 +104,7 @@
     const ESTADO_INICIAL = {
       prof: {
         ganhoDia: "", diasSemana: "", possuiAjudante: false,
-        custoAjudanteDia: "", deslocamentoDia: "", margem: "", cidadeEstado: "",
+        custoAjudanteDia: "", deslocamentoDia: "", margem: "",
       },
       servicos: [
         // Começa com uma linha vazia pronta pra preencher
@@ -139,21 +116,12 @@
     };
 
     function App() {
-      const [tabela, setTabela] = useState(PRODUTIVIDADE_PADRAO);
       const [prof, setProf] = useState(ESTADO_INICIAL.prof);
       const [servicos, setServicos] = useState(ESTADO_INICIAL.servicos);
       const [aditivos, setAditivos] = useState(ESTADO_INICIAL.aditivos);
       const [contratoOriginal, setContratoOriginal] = useState(ESTADO_INICIAL.contratoOriginal);
       const [simuladorPreco, setSimuladorPreco] = useState(ESTADO_INICIAL.simuladorPreco);
       const [carregado, setCarregado] = useState(false);
-
-      /* Tenta carregar a tabela do JSON externo (funciona quando servido por http) */
-      useEffect(() => {
-        fetch("produtividade.json")
-          .then((r) => r.ok ? r.json() : Promise.reject())
-          .then((j) => { if (j && j.servicos) setTabela(j.servicos); })
-          .catch(() => { /* file:// — usa a tabela embutida, tudo certo */ });
-      }, []);
 
       /* Persistência local (sem banco de dados) */
       useEffect(() => {
@@ -183,18 +151,12 @@
         setServicos((s) => [...s, { id: uid(), nome: "", unidade: "m²", quantidade: "", rendimento: "", complexidade: "Média" }]);
       const rmServico = (id) => setServicos((s) => s.filter((x) => x.id !== id));
       const upServico = (id, patch) =>
-        setServicos((s) => s.map((x) => {
-          if (x.id !== id) return x;
-          const nx = { ...x, ...patch };
-          // Auto-preenche unidade ao escolher um serviço conhecido
-          if (patch.nome !== undefined && tabela[patch.nome]) nx.unidade = tabela[patch.nome].unidade;
-          return nx;
-        }));
+        setServicos((s) => s.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
       /* ---------- Cálculo principal ---------- */
       const calc = useMemo(() => {
         const itens = servicos.map((s) => {
-          const { dias, rendEfetivo } = diasDoItem(s, tabela);
+          const { dias, rendEfetivo } = diasDoItem(s);
           return { ...s, dias, rendEfetivo };
         });
         const diasBrutos = itens.reduce((a, b) => a + b.dias, 0);
@@ -227,7 +189,7 @@
           precoMinimo, precoRecomendado, precoPremium,
           ganhoDia, margem, ganhoRealPorDia,
         };
-      }, [servicos, prof, tabela]);
+      }, [servicos, prof]);
 
       /* ---------- Aditivos ---------- */
       const custoDiaMarginal = useMemo(() =>
@@ -236,7 +198,7 @@
 
       function valorAditivo(a) {
         if (a.valorManual !== "" && a.valorManual != null) return toNum(a.valorManual);
-        const { dias } = diasDoItem(a, tabela);
+        const { dias } = diasDoItem(a);
         return dias * custoDiaMarginal * (1 + toNum(prof.margem) / 100);
       }
 
@@ -244,12 +206,7 @@
         setAditivos((a) => [...a, { id: uid(), tipo, nome: "", unidade: "m²", quantidade: "", rendimento: "", complexidade: "Média", valorManual: "" }]);
       const rmAditivo = (id) => setAditivos((a) => a.filter((x) => x.id !== id));
       const upAditivo = (id, patch) =>
-        setAditivos((a) => a.map((x) => {
-          if (x.id !== id) return x;
-          const nx = { ...x, ...patch };
-          if (patch.nome !== undefined && tabela[patch.nome]) nx.unidade = tabela[patch.nome].unidade;
-          return nx;
-        }));
+        setAditivos((a) => a.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
       const contratoBase = contratoOriginal === "" ? calc.precoRecomendado : toNum(contratoOriginal);
       const totAdicionais = aditivos.filter((a) => a.tipo === "adicional").reduce((s, a) => s + valorAditivo(a), 0);
@@ -285,7 +242,7 @@
                 <p className="text-xs text-slate-500">Quanto cobrar pra não trabalhar meses e ganhar menos do que imaginava.</p>
               </div>
             </div>
-            {prof.cidadeEstado && <p className="print-only text-sm mt-2">Local: {prof.cidadeEstado} · {hoje}</p>}
+            <p className="print-only text-sm text-slate-500 mt-2">Orçamento gerado em {hoje}</p>
           </header>
 
           {/* ---------- PASSO 1 ---------- */}
@@ -317,10 +274,6 @@
                   <NumInput value={prof.custoAjudanteDia} onChange={(v) => setP("custoAjudanteDia", v)} prefix="R$" />
                 </Campo>
               )}
-              <Campo label="Cidade / Estado">
-                <input value={prof.cidadeEstado} onChange={(e) => setP("cidadeEstado", e.target.value)}
-                  placeholder="Ex.: Campinas / SP" className={inputCls} />
-              </Campo>
             </div>
           </section>
 
@@ -353,17 +306,13 @@
               </ul>
             </div>
 
-            <datalist id="lista-servicos">
-              {Object.keys(tabela).map((n) => <option key={n} value={n} />)}
-            </datalist>
-
             <div className="space-y-3">
               {servicos.map((s) => {
                 const info = calc.itens.find((i) => i.id === s.id) || { dias: 0 };
                 return (
                   <div key={s.id} className="rounded-xl border border-slate-200 p-3">
                     <div className="flex gap-2 items-start">
-                      <input list="lista-servicos" value={s.nome} placeholder="Nome do serviço"
+                      <input value={s.nome} placeholder="Nome do serviço"
                         onChange={(e) => upServico(s.id, { nome: e.target.value })}
                         className={inputCls + " flex-1"} />
                       <button onClick={() => rmServico(s.id)} aria-label="Remover"
@@ -385,9 +334,8 @@
                       </Campo>
                     </div>
                     <div className="flex items-center justify-between mt-2 gap-2">
-                      <Campo label="Rende por dia" hint={tabela[s.nome] ? "padrão da tabela" : "informe o rendimento"}>
+                      <Campo label="Rende por dia" hint="quanto você faz por dia">
                         <NumInput value={s.rendimento}
-                          placeholder={tabela[s.nome] ? String(tabela[s.nome].rendimentoPorDia) : "0"}
                           onChange={(v) => upServico(s.id, { rendimento: v })} suffix={s.unidade + "/d"} />
                       </Campo>
                       <div className="text-right shrink-0">
@@ -493,7 +441,7 @@
                       <span className={"text-xs font-bold px-2 py-0.5 rounded-full " + (a.tipo === "adicional" ? "bg-emerald-600 text-white" : "bg-red-500 text-white")}>
                         {a.tipo === "adicional" ? "+ Adicional" : "− Não executado"}
                       </span>
-                      <input list="lista-servicos" value={a.nome} placeholder="Serviço"
+                      <input value={a.nome} placeholder="Serviço"
                         onChange={(e) => upAditivo(a.id, { nome: e.target.value })} className={inputCls + " flex-1"} />
                       <button onClick={() => rmAditivo(a.id)} className="text-slate-400 hover:text-red-500 px-1 text-xl leading-none">×</button>
                     </div>
