@@ -121,6 +121,7 @@
       const [aditivos, setAditivos] = useState(ESTADO_INICIAL.aditivos);
       const [contratoOriginal, setContratoOriginal] = useState(ESTADO_INICIAL.contratoOriginal);
       const [simuladorPreco, setSimuladorPreco] = useState(ESTADO_INICIAL.simuladorPreco);
+      const [mostrarAditivos, setMostrarAditivos] = useState(false);
       const [carregado, setCarregado] = useState(false);
 
       /* Persistência local (sem banco de dados) */
@@ -133,6 +134,7 @@
             if (d.servicos) setServicos(d.servicos);
             if (d.aditivos) setAditivos(d.aditivos);
             if (d.contratoOriginal != null) setContratoOriginal(d.contratoOriginal);
+            if (d.mostrarAditivos != null) setMostrarAditivos(d.mostrarAditivos);
           }
         } catch (e) {}
         setCarregado(true);
@@ -140,9 +142,9 @@
       useEffect(() => {
         if (!carregado) return;
         try {
-          localStorage.setItem("orcajusto_v2", JSON.stringify({ prof, servicos, aditivos, contratoOriginal }));
+          localStorage.setItem("orcajusto_v2", JSON.stringify({ prof, servicos, aditivos, contratoOriginal, mostrarAditivos }));
         } catch (e) {}
-      }, [prof, servicos, aditivos, contratoOriginal, carregado]);
+      }, [prof, servicos, aditivos, contratoOriginal, mostrarAditivos, carregado]);
 
       const setP = (k, v) => setProf((p) => ({ ...p, [k]: v }));
 
@@ -177,6 +179,15 @@
         const precoRecomendado = baseCusto + reservaRisco;
         const precoPremium = precoRecomendado * 1.15;
 
+        // Rateia o preço recomendado entre os serviços, proporcional aos dias de cada um.
+        // Assim cada serviço ganha um preço total e um preço por unidade (m²/m/un).
+        const itensOrcados = itens.map((it) => {
+          const precoServico = diasBrutos > 0 ? precoRecomendado * (it.dias / diasBrutos) : 0;
+          const qtd = toNum(it.quantidade);
+          const precoUnit = qtd > 0 ? precoServico / qtd : 0;
+          return { ...it, precoServico, precoUnit };
+        });
+
         const diasSemana = Math.max(1, toNum(prof.diasSemana) || 5);
         const semanas = totalDias / diasSemana;
 
@@ -184,7 +195,7 @@
         const ganhoRealPorDia = (P) => totalDias > 0 ? (P - custosOperacionais) / totalDias : 0;
 
         return {
-          itens, diasBrutos, totalDias, semanas,
+          itens: itensOrcados, diasBrutos, totalDias, semanas,
           maoDeObra, deslocamento, ajudante, custosOperacionais, baseCusto, reservaRisco,
           precoMinimo, precoRecomendado, precoPremium,
           ganhoDia, margem, ganhoRealPorDia,
@@ -377,6 +388,33 @@
               </div>
             </div>
 
+            {/* Itens do orçamento: descrição, quantidade, preço por unidade e total */}
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-slate-600 mb-2">Serviços orçados</h3>
+              <div className="rounded-xl border border-slate-100 overflow-hidden">
+                {calc.itens.filter((it) => toNum(it.quantidade) > 0).map((it) => (
+                  <div key={it.id} className="flex items-baseline justify-between gap-3 px-3 py-2 border-b border-slate-100 last:border-0">
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-700 truncate">{it.nome || "Serviço sem nome"}</div>
+                      <div className="text-xs text-slate-400">
+                        {dec(toNum(it.quantidade), 2)} {it.unidade} × {brl(it.precoUnit)}/{it.unidade}
+                      </div>
+                    </div>
+                    <div className="tabular-nums font-semibold text-slate-700 shrink-0">{brl(it.precoServico)}</div>
+                  </div>
+                ))}
+                {calc.itens.filter((it) => toNum(it.quantidade) > 0).length === 0 && (
+                  <div className="px-3 py-3 text-sm text-slate-400 text-center">
+                    Preencha serviços com quantidade para ver o detalhamento.
+                  </div>
+                )}
+              </div>
+              <div className="flex items-baseline justify-between gap-3 px-3 pt-2">
+                <span className="font-semibold text-slate-600">Total dos serviços</span>
+                <span className="tabular-nums font-bold text-slate-800">{brl(calc.precoRecomendado)}</span>
+              </div>
+            </div>
+
             {/* DIFERENCIAL: ganho real por dia */}
             <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-4 mb-4">
               <p className="text-slate-700">
@@ -424,7 +462,18 @@
             </div>
           </section>
 
+          {/* Toggle: a seção de aditivos só aparece quando marcada (igual ao ajudante) */}
+          <label className="no-print flex items-center gap-2 select-none bg-white rounded-2xl shadow-sm p-5 mb-4 cursor-pointer">
+            <input type="checkbox" checked={mostrarAditivos}
+              onChange={(e) => setMostrarAditivos(e.target.checked)}
+              className="h-5 w-5 rounded border-slate-300 text-purple-600" />
+            <span className="text-sm font-medium text-slate-700">
+              Esta obra teve aditivos <span className="font-normal text-slate-400">(serviços extras ou não executados)</span>
+            </span>
+          </label>
+
           {/* ---------- MÓDULO DE ADITIVOS ---------- */}
+          {mostrarAditivos && (
           <section className="bg-white rounded-2xl shadow-sm p-5 mb-4 print-area">
             <h2 className="text-sm font-bold text-purple-600 uppercase tracking-wide mb-3">Aditivos da obra</h2>
 
@@ -492,6 +541,7 @@
               </div>
             </div>
           </section>
+          )}
 
           {/* Rodapé / ações */}
           <div className="no-print flex gap-2">
