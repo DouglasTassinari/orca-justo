@@ -331,12 +331,27 @@
               <span className="text-xs text-slate-400">{calc.totalDias} dias úteis estimados</span>
             </div>
 
-            <p className="text-xs text-slate-400 leading-relaxed mb-3 -mt-1">
-              A <span className="font-medium text-slate-500">complexidade</span> ajusta o tempo (e o preço): <span className="font-medium">Baixa</span> — serviço
-              simples e repetitivo, rende mais rápido; <span className="font-medium">Média</span> — condições normais;{" "}
-              <span className="font-medium">Alta</span> — acabamento fino, difícil acesso, muitos recortes ou risco de
-              retrabalho, rende mais devagar e leva mais dias.
-            </p>
+            <div className="text-xs text-slate-500 leading-relaxed mb-3 -mt-1 rounded-lg bg-slate-50 border border-slate-100 p-3">
+              <p className="mb-1.5">
+                A <span className="font-semibold text-slate-600">complexidade</span> muda o quanto você rende por dia.
+                Isso altera o <span className="font-medium">número de dias</span> da obra — e, como o preço é por dia
+                trabalhado, mexe direto no <span className="font-medium">valor final</span>:
+              </p>
+              <ul className="space-y-1">
+                <li>
+                  <span className="font-semibold text-emerald-700">Baixa</span> — simples e repetitivo: rende ~15% a mais,
+                  então leva <b>~13% menos dias</b> → preço menor.
+                </li>
+                <li>
+                  <span className="font-semibold text-slate-600">Média</span> — condições normais: usa o rendimento
+                  padrão, sem ajuste.
+                </li>
+                <li>
+                  <span className="font-semibold text-red-600">Alta</span> — acabamento fino, difícil acesso, muitos
+                  recortes ou risco de retrabalho: rende ~20% a menos, então leva <b>~25% mais dias</b> → preço maior.
+                </li>
+              </ul>
+            </div>
 
             <datalist id="lista-servicos">
               {Object.keys(tabela).map((n) => <option key={n} value={n} />)}
