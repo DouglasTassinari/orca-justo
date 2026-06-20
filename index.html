@@ -293,16 +293,16 @@
             <h2 className="text-sm font-bold text-indigo-600 uppercase tracking-wide mb-3">1 · Seus dados</h2>
             <div className="grid grid-cols-2 gap-3">
               <Campo label="Quanto quer ganhar por dia?">
-                <NumInput value={prof.ganhoDia} onChange={(v) => setP("ganhoDia", v)} prefix="R$" placeholder="400" />
+                <NumInput value={prof.ganhoDia} onChange={(v) => setP("ganhoDia", v)} prefix="R$" />
               </Campo>
               <Campo label="Dias por semana">
-                <NumInput value={prof.diasSemana} onChange={(v) => setP("diasSemana", v)} suffix="dias" placeholder="5" />
+                <NumInput value={prof.diasSemana} onChange={(v) => setP("diasSemana", v)} suffix="dias" />
               </Campo>
               <Campo label="Deslocamento por dia">
-                <NumInput value={prof.deslocamentoDia} onChange={(v) => setP("deslocamentoDia", v)} prefix="R$" placeholder="25" />
+                <NumInput value={prof.deslocamentoDia} onChange={(v) => setP("deslocamentoDia", v)} prefix="R$" />
               </Campo>
               <Campo label="Margem / reserva">
-                <NumInput value={prof.margem} onChange={(v) => setP("margem", v)} suffix="%" placeholder="15" />
+                <NumInput value={prof.margem} onChange={(v) => setP("margem", v)} suffix="%" />
               </Campo>
               <div className="col-span-2">
                 <label className="flex items-center gap-2 select-none">
@@ -314,7 +314,7 @@
               </div>
               {prof.possuiAjudante && (
                 <Campo label="Custo do ajudante por dia">
-                  <NumInput value={prof.custoAjudanteDia} onChange={(v) => setP("custoAjudanteDia", v)} prefix="R$" placeholder="150" />
+                  <NumInput value={prof.custoAjudanteDia} onChange={(v) => setP("custoAjudanteDia", v)} prefix="R$" />
                 </Campo>
               )}
               <Campo label="Cidade / Estado">
@@ -330,6 +330,13 @@
               <h2 className="text-sm font-bold text-indigo-600 uppercase tracking-wide">2 · Serviços</h2>
               <span className="text-xs text-slate-400">{calc.totalDias} dias úteis estimados</span>
             </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed mb-3 -mt-1">
+              A <span className="font-medium text-slate-500">complexidade</span> ajusta o tempo (e o preço): <span className="font-medium">Baixa</span> — serviço
+              simples e repetitivo, rende mais rápido; <span className="font-medium">Média</span> — condições normais;{" "}
+              <span className="font-medium">Alta</span> — acabamento fino, difícil acesso, muitos recortes ou risco de
+              retrabalho, rende mais devagar e leva mais dias.
+            </p>
 
             <datalist id="lista-servicos">
               {Object.keys(tabela).map((n) => <option key={n} value={n} />)}
